@@ -194,56 +194,52 @@ st.markdown("""
 # ====================================================
 @st.cache_data
 def generate_default_surveillance_data():
-    """Generates rigorous structural synthetic patient data for local dynamic computations."""
+    """Generates structural columns mapping the Ghana National SitRep spreadsheet fields to ensure compatibility."""
     regions = [
         "Ahafo", "Ashanti", "Bono", "Bono East", "Central", "Eastern", "Greater Accra",
         "North East", "Northern", "Oti", "Savannah", "Upper East", "Upper West", "Volta",
         "Western", "Western North"
     ]
     
-    districts_map = {
-        "Greater Accra": ["Accra Metropolitan", "Ayawaso West Municipal", "Tema Metropolitan", "Ga South Municipal"],
-        "Ashanti": ["Kumasi Metropolitan", "Obuasi Municipal", "Asokwa Municipal", "Ejisu Municipal"],
-        "Northern": ["Tamale Metropolitan", "Savelugu Municipal", "Yendi Municipal"],
-        "Western": ["Sekondi-Takoradi Metropolitan", "Tarkwa-Nsuaem Municipal"],
-        "Volta": ["Ho Municipal", "Hohoe Municipal", "Ketu South Municipal"]
-    }
-    
-    base_date = datetime.now() - timedelta(days=90)
     data_list = []
-    
-    # Generate 1500 realistic epidemiological patient line-list lines
     np.random.seed(42)
-    for i in range(1500):
-        reg = np.random.choice(regions)
-        dist = np.random.choice(districts_map.get(reg, [f"{reg} District A", f"{reg} District B"]))
-        days_offset = np.random.randint(0, 90)
-        case_date = base_date + timedelta(days=days_offset)
-        
-        status = np.random.choice(["Confirmed", "Suspected", "Probable"], p=[0.35, 0.45, 0.20])
-        outcome = "Active"
-        if status == "Confirmed":
-            outcome = np.random.choice(["Recovered", "Death", "Active"], p=[0.70, 0.12, 0.18])
-        elif status == "Suspected":
-            outcome = np.random.choice(["Recovered", "Active"], p=[0.85, 0.15])
-            
-        lab_res = "Positive" if status == "Confirmed" else np.random.choice(["Negative", "Pending"], p=[0.7, 0.3])
+    
+    for i, reg in enumerate(regions):
+        suspected = np.random.randint(10, 100)
+        probable = np.random.randint(5, 30)
+        confirmed = np.random.randint(1, 15)
+        deaths = np.random.randint(0, 10)
+        new_susp = np.random.randint(0, 8)
+        new_conf = np.random.randint(0, 3)
         
         data_list.append({
-            "Date": case_date.strftime("%Y-%m-%d"),
+            "SitRep Number": 1,
+            "Epidemiological Week": 20,
+            "Reporting Period Start": "2026-05-14",
+            "Reporting Period End": "2026-05-21",
+            "Submission Date": "2026-05-21",
+            "Reporting Level": "Regional",
             "Region": reg,
-            "District": dist,
-            "Facility": f"{dist} General Hospital",
-            "Community": f"Community {np.random.randint(1,10)}",
-            "Age": np.random.randint(1, 85),
-            "Sex": np.random.choice(["Male", "Female"]),
-            "Case Status": status,
-            "Outcome": outcome,
-            "Lab Result": lab_res,
-            "Contact Traced": np.random.choice(["Yes", "No"], p=[0.88, 0.12]),
-            "Risk Level": np.random.choice(["Critical", "High", "Medium", "Low"], p=[0.1, 0.2, 0.4, 0.3]),
-            "Latitude": 5.556 + np.random.uniform(-1.5, 5.0),
-            "Longitude": -0.196 + np.random.uniform(-2.5, 1.5)
+            "Region Code": reg[:2].upper(),
+            "Prepared By": "PHEOC Lead",
+            "Reviewed By": "Director",
+            "Total Emergencies / Active Incidents": 1,
+            "Suspected Cases": suspected,
+            "Probable Cases": probable,
+            "Confirmed Cases": confirmed,
+            "Deaths": deaths,
+            "New Suspected Cases This Reporting Period": new_susp,
+            "New Confirmed Cases This Reporting Period": new_conf,
+            "Overall Risk Level": np.random.choice(["High Alert", "Medium Risk", "Low Risk"]),
+            "Outbreak Strain": "Bundibugyo ebolavirus (BDBV)",
+            "Global Event Summary": "Ongoing monitoring",
+            "WHO PHEIC Declared?": "Yes",
+            "Ghana Importation Risk Level": "High",
+            "EOC Activated?": "Yes",
+            "Incident Manager Assigned?": "Yes",
+            "Coordination Meeting Held?": "Yes",
+            "SitRep Generated?": "Yes",
+            "Lab Result": np.random.choice(["Positive", "Negative", "Pending"])
         })
         
     return pd.DataFrame(data_list)
@@ -252,19 +248,34 @@ def generate_default_surveillance_data():
 # PIPELINE INITIALIZATION & CLEANSING ENGINE
 # ====================================================
 def parse_and_clean_surveillance_stream(df):
-    """Protects operational runtime from application crashes caused by missing dataset structures."""
+    """Maps custom variables onto the precise spreadsheet layout used by Ghana National SITREP schema."""
     try:
-        required_cols = ["Date", "Region", "District", "Case Status", "Outcome", "Lab Result"]
-        for col in required_cols:
-            if col not in df.columns:
-                # Add default structural series dynamically
-                if col == "Date": df[col] = datetime.now().strftime("%Y-%m-%d")
-                elif col == "Case Status": df[col] = "Suspected"
-                elif col == "Outcome": df[col] = "Active"
-                else: df[col] = "Unknown"
+        # Standardize core column structures from sheet layout
+        mapping_cols = {
+            "Region": "Region",
+            "Suspected Cases": "Suspected Cases",
+            "Confirmed Cases": "Confirmed Cases",
+            "Probable Cases": "Probable Cases",
+            "Deaths": "Deaths",
+            "Epidemiological Week": "Epidemiological Week"
+        }
         
-        df["Date"] = pd.to_datetime(df["Date"], errors='coerce')
+        for base_name, target_col in mapping_cols.items():
+            if target_col not in df.columns:
+                df[target_col] = 0 if base_name != "Region" else "Unknown Region"
+        
+        # Ensure date/week sorting track logic doesn't fail
+        if "Submission Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Submission Date"], errors='coerce')
+        else:
+            df["Date"] = datetime.now()
+            
         df["Date"] = df["Date"].fillna(datetime.now())
+        
+        # Safe string structural parsing for metrics execution profiles
+        if "Lab Result" not in df.columns:
+            df["Lab Result"] = "Pending"
+            
         return df
     except Exception as e:
         st.error(f"Surveillance cleansing pipeline error: {str(e)}")
@@ -303,7 +314,7 @@ def build_emergency_header_system():
         <div class="ticker-wrap">
             <span class="ticker-badge">PHEIC ACTIVE</span>
             <div class="ticker-text">
-                <strong>SEVERE ALERT:</strong> Cholera outbreak cluster expansion within Greater Accra | 
+                <strong>SEVERE ALERT:</strong> National EVD/BDBV Preparedness and Surveillance Active | 
                 Meningitis threshold under control in Northern Region surveillance zones | 
                 System Live-Time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
             </div>
@@ -348,24 +359,28 @@ def render_sidebar_controls_pipeline():
         st.markdown("---")
         st.markdown("<h3 style='color:#fff !important; font-size:14px; font-weight:700;'>SURVEILLANCE TIER FILTERS</h3>", unsafe_allow_html=True)
         
-        outbreak_type = st.selectbox("Outbreak Pathogen Focus", ["All Pathogens", "Cholera", "Meningitis", "Lassa Fever", "Yellow Fever"])
+        outbreak_type = st.selectbox("Outbreak Pathogen Focus", ["All Pathogens", "EVD/BDBV Strain Focus", "Cholera", "Meningitis", "Yellow Fever"])
         
         regions_list = ["All Regions"] + list(base_df["Region"].unique())
         selected_region = st.selectbox("Primary Region Filter", regions_list)
         
         if selected_region != "All Regions":
             filtered_df = base_df[base_df["Region"] == selected_region]
-            districts_list = ["All Districts"] + list(filtered_df["District"].unique())
         else:
             filtered_df = base_df
-            districts_list = ["All Districts"] + list(base_df["District"].unique())
+            
+        districts_list = ["All Districts"]
+        if "District" in filtered_df.columns:
+            districts_list += list(filtered_df["District"].unique())
+        else:
+            districts_list += ["Region-Wide Focus"]
             
         selected_district = st.selectbox("MMDA Sub-Filter", districts_list)
         
         # Apply filter slicing logic
         if selected_region != "All Regions":
             base_df = base_df[base_df["Region"] == selected_region]
-        if selected_district != "All Districts":
+        if selected_district != "All Districts" and "District" in base_df.columns:
             base_df = base_df[base_df["District"] == selected_district]
             
         st.markdown("---")
@@ -379,28 +394,28 @@ def render_sidebar_controls_pipeline():
 # UNIFIED METRICS EXECUTOR PANEL (KPI GENERATOR)
 # ====================================================
 def calculate_and_render_kpis(df):
-    total_records = len(df)
-    confirmed = len(df[df["Case Status"] == "Confirmed"])
-    suspected = len(df[df["Case Status"] == "Suspected"])
-    probable = len(df[df["Case Status"] == "Probable"])
+    # Sum values across regional aggregated SitRep metrics cleanly
+    confirmed = int(df["Confirmed Cases"].sum())
+    suspected = int(df["Suspected Cases"].sum())
+    probable = int(df["Probable Cases"].sum())
+    deaths = int(df["Deaths"].sum())
     
-    deaths = len(df[df["Outcome"] == "Death"])
-    recovered = len(df[df["Outcome"] == "Recovered"])
-    active = len(df[df["Outcome"] == "Active"])
-    
+    total_records = suspected + confirmed + probable
+    if total_records == 0:
+        total_records = len(df)
+        
     cfr = (deaths / confirmed * 100) if confirmed > 0 else (deaths / max(total_records, 1) * 100)
-    regions_affected = df["Region"].nunique()
-    districts_affected = df["District"].nunique()
+    districts_affected = df["District"].nunique() if "District" in df.columns else df["Region"].nunique()
     
     kpi_cols = st.columns(6)
     
     metrics = [
-        {"title": "Total Line Records", "val": total_records, "delta": "Baseline Ingested", "up": True},
-        {"title": "Confirmed Cases", "val": confirmed, "delta": "+14 New 24h", "up": True},
-        {"title": "Active Isolation", "val": active, "delta": "-2 Discharges", "up": False},
-        {"title": "Total Mortalities", "val": deaths, "delta": "Trigger High", "up": True},
+        {"title": "Total National Suspected", "val": suspected, "delta": "SITREP Log", "up": True},
+        {"title": "Confirmed Cases", "val": confirmed, "delta": "Lab Verified", "up": True},
+        {"title": "Probable Tracking", "val": probable, "delta": "Clinical Signs", "up": False},
+        {"title": "Total Mortalities", "val": deaths, "delta": "Crude Outbreak Sum", "up": True},
         {"title": "Crude CFR (%)", "val": f"{cfr:.1f}%", "delta": "WHO Threshold 1%", "up": True},
-        {"title": "MMDAs Affected", "val": districts_affected, "delta": "Spread Tracking", "up": True}
+        {"title": "Reporting Vectors", "val": districts_affected, "delta": "Active Regions", "up": True}
     ]
     
     for idx, metric in enumerate(metrics):
@@ -422,30 +437,19 @@ def calculate_and_render_kpis(df):
 def draw_advanced_epicurve_system(df):
     st.markdown("### EPIDEMIC CURVE ANALYTICS (RECONSTRUCTED BINDINGS)")
     
-    # Process grouping timelines
-    ts_df = df.groupby(["Date", "Case Status"]).size().reset_index(name="Counts")
-    ts_pivot = ts_df.pivot(index="Date", columns="Case Status", values="Counts").fillna(0).reset_index()
-    
-    # Ensure standard structural properties exist
-    for col in ["Confirmed", "Suspected", "Probable"]:
-        if col not in ts_pivot.columns: ts_pivot[col] = 0
-        
-    ts_pivot["Rolling_7D_Confirmed"] = ts_pivot["Confirmed"].rolling(window=7, min_periods=1).mean()
+    # Process grouping timelines by Epidemiological Week or Submission Date
+    time_col = "Epidemiological Week" if "Epidemiological Week" in df.columns else "Date"
+    ts_df = df.groupby(time_col)[["Suspected Cases", "Confirmed Cases"]].sum().reset_index()
     
     fig = go.Figure()
     
-    # Cumulative overlays
     fig.add_trace(go.Bar(
-        x=ts_pivot["Date"], y=ts_pivot["Suspected"],
+        x=ts_df[time_col], y=ts_df["Suspected Cases"],
         name="Suspected Incident Load", marker_color="#ffedd5", opacity=0.85
     ))
     fig.add_trace(go.Bar(
-        x=ts_pivot["Date"], y=ts_pivot["Confirmed"],
+        x=ts_df[time_col], y=ts_df["Confirmed Cases"],
         name="Lab Confirmed Cases", marker_color="#CE1126"
-    ))
-    fig.add_trace(go.Scatter(
-        x=ts_pivot["Date"], y=ts_pivot["Rolling_7D_Confirmed"],
-        name="7-Day Moving Avg (Confirmed)", line=dict(color="#006B3F", width=3)
     ))
     
     fig.update_layout(
@@ -454,8 +458,8 @@ def draw_advanced_epicurve_system(df):
         paper_bgcolor="#ffffff",
         margin=dict(l=20, r=20, t=20, b=20),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        xaxis=dict(gridcolor="#e5e7eb"),
-        yaxis=dict(gridcolor="#e5e7eb")
+        xaxis=dict(title="Epi-Timeline Domain Container", gridcolor="#e5e7eb"),
+        yaxis=dict(title="Absolute Core Counts", gridcolor="#e5e7eb")
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -463,18 +467,13 @@ def draw_advanced_epicurve_system(df):
 def draw_trajectory_scenarios(df):
     st.markdown("### OUTBREAK TRAJECTORY MODELING & Rt FORECASTS")
     
-    # Calculate historical baseline values
-    historical = df.groupby("Date").size().reset_index(name="Daily")
-    historical = historical.sort_values("Date")
-    historical["Cumulative"] = historical["Daily"].cumsum()
-    
-    last_val = historical["Cumulative"].iloc[-1] if len(historical) > 0 else 100
+    confirmed_total = df["Confirmed Cases"].sum()
+    last_val = confirmed_total if confirmed_total > 0 else 100
     future_days = np.array(range(1, 31))
     
-    # Build analytical mathematical matrices for transmission scenario projections
-    worst_case = last_val * np.exp(0.05 * future_days)
-    moderate_case = last_val * np.exp(0.02 * future_days)
-    optimistic_case = last_val + (1.2 * future_days)
+    worst_case = last_val * np.exp(0.03 * future_days)
+    moderate_case = last_val * np.exp(0.01 * future_days)
+    optimistic_case = last_val + (0.5 * future_days)
     
     future_dates = [datetime.now() + timedelta(days=int(i)) for i in future_days]
     
@@ -501,54 +500,76 @@ def run_dashboard_router(module, df):
         with col_left:
             draw_advanced_epicurve_system(df)
             
-            # Geographic Map Pipeline Wrapper Placeholder
             st.markdown("### GEOSPATIAL CLUSTER RADAR MAP")
-            m = folium.Map(location=[7.9465, -1.0232], zoom_start=7, tiles="CartoDB positron")
+            m = folium.Map(location=[7.9465, -1.0232], zoom_start=6.5, tiles="CartoDB positron")
             
-            # Map dynamic coordinate plot arrays safely
-            sample_coords = df.dropna(subset=["Latitude", "Longitude"]).head(40)
-            for _, r in sample_coords.iterrows():
-                color = "#CE1126" if r["Case Status"] == "Confirmed" else "#c2410c"
-                folium.CircleMarker(
-                    location=[r["Latitude"], r["Longitude"]],
-                    radius=6, color=color, fill=True,
-                    popup=f"MMDA: {r['District']} Status: {r['Case Status']}"
-                ).add_to(m)
-                
+            # Safe Fallback Geographic Center Arrays for Ghana regions until spatial metrics collected
+            ghana_regional_centroids = {
+                "Greater Accra": [5.556, -0.196], "Ashanti": [6.688, -1.624], "Northern": [9.407, -0.839],
+                "Western": [5.144, -1.758], "Volta": [6.578, 0.450], "Central": [5.532, -1.189],
+                "Eastern": [6.287, -0.451], "Upper East": [10.785, -0.851], "Upper West": [10.252, -2.130],
+                "Bono": [7.583, -2.483], "Bono East": [7.753, -1.053], "Ahafo": [7.001, -2.434],
+                "Oti": [8.181, 0.435], "Savannah": [9.102, -1.815], "North East": [10.512, -0.382],
+                "Western North": [6.275, -2.812]
+            }
+            
+            # Check if columns are active at the end of collection phase layout
+            if "Latitude" in df.columns and "Longitude" in df.columns:
+                sample_coords = df.dropna(subset=["Latitude", "Longitude"])
+                for _, r in sample_coords.iterrows():
+                    color = "#CE1126" if r["Confirmed Cases"] > 0 else "#c2410c"
+                    folium.CircleMarker(
+                        location=[r["Latitude"], r["Longitude"]],
+                        radius=8, color=color, fill=True,
+                        popup=f"Region: {r['Region']} Confirmed: {r['Confirmed Cases']}"
+                    ).add_to(m)
+            else:
+                # Plot summaries over regional geographic centers as visual placeholders
+                regional_summary = df.groupby("Region")[["Confirmed Cases", "Suspected Cases"]].sum().reset_index()
+                for _, r in regional_summary.iterrows():
+                    loc = ghana_regional_centroids.get(r["Region"], [7.9465, -1.0232])
+                    color = "#CE1126" if r["Confirmed Cases"] > 0 else "#c2410c"
+                    size_radius = min(max(int(r["Confirmed Cases"] + r["Suspected Cases"]) // 4, 5), 25)
+                    folium.CircleMarker(
+                        location=loc, radius=size_radius, color=color, fill=True,
+                        popup=f"Region: {r['Region']}<br>Confirmed: {r['Confirmed Cases']}<br>Suspected: {r['Suspected Cases']}"
+                    ).add_to(m)
+                    
             st_folium(m, height=350, width=820, key="national_map_overview")
             
         with col_right:
             st.markdown("### ENGINE EPIDEMIOLOGICAL REMARKS")
-            # Rule-base dynamic string engine evaluation
-            confirmed_count = len(df[df["Case Status"] == "Confirmed"])
-            accra_cases = len(df[(df["Region"] == "Greater Accra") & (df["Case Status"] == "Confirmed")])
+            confirmed_count = df["Confirmed Cases"].sum()
+            accra_cases = df[df["Region"] == "Greater Accra"]["Confirmed Cases"].sum()
             pct_accra = (accra_cases / max(confirmed_count, 1)) * 100
             
             st.info(f"Spatial Intensity: Greater Accra contributes {pct_accra:.1f}% of national confirmed cases.")
             if pct_accra > 30:
                 st.warning("Alert: Regional concentration exceeds containment variance profiles inside southern transmission vectors.")
-            st.error("Threshold Trigger: Incident rate vectors inside 3 specific MMDAs match structural geometric expansion indices.")
+            st.error("Threshold Trigger: Incident response workflows must synchronize local reference data protocols.")
             
             st.markdown("### INCIDENT MILESTONES & TIMELINE PANELS")
             st.markdown(f"""
                 <div class="tl-container">
                     <div class="tl-node alert">
                         <strong>{datetime.now().strftime('%Y-%m-%d')} (Today)</strong><br>
-                        <span style="font-size:12px; color:#6b7280;">PHEOC activates strategic regional multi-agency incident system response command.</span>
+                        <span style="font-size:12px; color:#6b7280;">National EOC operationalized directly using current surveillance matrix pipelines.</span>
                     </div>
                     <div class="tl-node info">
-                        <strong>2026-05-15</strong><br>
-                        <span style="font-size:12px; color:#6b7280;">National Public Reference Lab expands testing pipelines down into district medical vectors.</span>
+                        <strong>2026-05-21</strong><br>
+                        <span style="font-size:12px; color:#6b7280;">SitRep assessment parameters synchronized with National Disease Control standards.</span>
                     </div>
                     <div class="tl-node">
-                        <strong>2026-05-10</strong><br>
-                        <span style="font-size:12px; color:#6b7280;">Index clustering vectors flagged inside cross-border processing networks.</span>
+                        <strong>2026-05-15</strong><br>
+                        <span style="font-size:12px; color:#6b7280;">Cross-border alert triggers active for BDBV Pathogen focus checking across points of entry.</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
             
             st.markdown("### CLASSIFICATION DISTRIBUTIONS")
-            fig_pie = px.pie(df, names="Case Status", color_discrete_sequence=["#CE1126", "#ffedd5", "#e5e7eb"])
+            melted_status = df.melt(id_vars=["Region"], value_vars=["Suspected Cases", "Confirmed Cases", "Probable Cases"], var_name="Case Status", value_name="Count")
+            summary_pie = melted_status.groupby("Case Status")["Count"].sum().reset_index()
+            fig_pie = px.pie(summary_pie, values="Count", names="Case Status", color_discrete_sequence=["#ffedd5", "#CE1126", "#e5e7eb"])
             fig_pie.update_layout(template="plotly_white", plot_bgcolor="#ffffff", paper_bgcolor="#ffffff", margin=dict(l=10,r=10,t=10,b=10))
             st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -573,7 +594,7 @@ def run_dashboard_router(module, df):
     elif module == "Surveillance Analytics":
         draw_advanced_epicurve_system(df)
         st.markdown("### LINE-LIST EXCERPT DATA STREAM")
-        st.dataframe(df.head(100), use_container_width=True)
+        st.dataframe(df, use_container_width=True)
 
     elif module == "Epidemic Intelligence":
         col_ei1, col_ei2 = st.columns(2)
@@ -597,26 +618,26 @@ def run_dashboard_router(module, df):
             fig_lab.update_layout(template="plotly_white", plot_bgcolor="#ffffff", paper_bgcolor="#ffffff")
             st.plotly_chart(fig_lab, use_container_width=True)
         with col_l2:
-            st.metric("Total Lab Ingest Volume", len(df), "Sustained Operational Capacity")
+            st.metric("Total Lab Ingest Volume", int(df["Confirmed Cases"].sum() + df["Probable Cases"].sum()), "Sustained Operational Capacity")
             st.metric("Pending Result Backlog", len(df[df["Lab Result"] == "Pending"]), "Action Required")
 
     elif module == "Regional Risk Stratification":
         st.markdown("### ADMINISTRATIVE AREA RISK INTENSITY STRATIFICATION MATRIX")
         reg_risk = df.groupby("Region").agg(
-            Total_Load=("Case Status", "count"),
-            Confirmed_Count=("Case Status", lambda x: (x == "Confirmed").sum()),
-            Mortalities=("Outcome", lambda x: (x == "Death").sum())
+            Suspected_Total=("Suspected Cases", "sum"),
+            Confirmed_Total=("Confirmed Cases", "sum"),
+            Mortalities_Total=("Deaths", "sum")
         ).reset_index()
         
-        reg_risk["CFR (%)"] = (reg_risk["Mortalities"] / reg_risk["Confirmed_Count"].replace(0, 1) * 100)
-        reg_risk["Calculated Risk Level"] = np.where(reg_risk["Confirmed_Count"] > 50, "CRITICAL", np.where(reg_risk["Confirmed_Count"] > 20, "HIGH", "MEDIUM"))
+        reg_risk["CFR (%)"] = (reg_risk["Mortalities_Total"] / reg_risk["Confirmed_Total"].replace(0, 1) * 100)
+        reg_risk["Calculated Risk Level"] = np.where(reg_risk["Confirmed_Total"] > 10, "CRITICAL", np.where(reg_risk["Confirmed_Total"] > 3, "HIGH", "MEDIUM"))
         
-        st.dataframe(reg_risk.sort_values(by="Confirmed_Count", ascending=False), use_container_width=True)
+        st.dataframe(reg_risk.sort_values(by="Confirmed_Total", ascending=False), use_container_width=True)
 
     elif module == "District Hotspots":
-        st.markdown("### TOP-RANKED MMDA SUB-DISTRICT SURVEILLANCE RISK HEAVY VECTORS")
-        dist_risk = df.groupby(["Region", "District"]).size().reset_index(name="Incident Count").sort_values(by="Incident Count", ascending=False)
-        fig_dist = px.bar(dist_risk.head(20), x="District", y="Incident Count", color="Region", title="Top 20 Outbreak Active Districts Vector Counts")
+        st.markdown("### REGIONAL TRACKING METRICS COUNTS")
+        dist_risk = df.groupby(["Region"])[["Confirmed Cases", "Suspected Cases"]].sum().reset_index().sort_values(by="Confirmed Cases", ascending=False)
+        fig_dist = px.bar(dist_risk, x="Region", y="Confirmed Cases", color="Region", title="Active Outbreak Regional Confirmed Vector Case Count Profile")
         fig_dist.update_layout(template="plotly_white", plot_bgcolor="#ffffff", paper_bgcolor="#ffffff")
         st.plotly_chart(fig_dist, use_container_width=True)
 
