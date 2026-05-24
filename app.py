@@ -314,8 +314,7 @@ def build_emergency_header_system():
         <div class="ticker-wrap">
             <span class="ticker-badge">PHEIC ACTIVE</span>
             <div class="ticker-text">
-                <strong>SEVERE ALERT:</strong> National EVD/BDBV Preparedness and Surveillance Active | 
-                Meningitis threshold under control in Northern Region surveillance zones | 
+                <strong>ALERT LEVEL: HEIGHTENED SURVEILLANCE & PREPAREDNESS
                 System Live-Time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
             </div>
         </div>
